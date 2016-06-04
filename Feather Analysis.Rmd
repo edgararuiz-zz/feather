@@ -1,0 +1,125 @@
+---
+title: "Feather Performance Analysis"
+author: "Edgar Ruiz"
+date: "June, 1 2016"
+output: html_document
+---
+```{r, eval=TRUE , echo=FALSE}
+library(feather)
+library(data.table)
+library(stringr)
+library(feather)
+library(data.table)
+library(stringr)
+library(ggplot2)
+results <-read_feather("results.feather")
+comparison <- read_feather("comparison.feather")
+gb_breaks <- c(0,0.25,0.5,0.75,1,1.25,1.50,1.75,2)* 1024^3
+gb_labels <- c(0,0.25,0.5,0.75,1,1.25,1.50,1.75,2)
+x_breaks <- c(0,20,40,60,80,100,120,140,160,180,200,220,240)
+gb_axis <- "Original CSV File Size (Gb)"
+fun_scale <- scale_color_discrete(name="Function", breaks=c("csv","dt","feather"), labels=c("read.csv","fread", "read_feather" ))
+mean_csv <- round(mean(comparison$cf_elapsed), digits = 2)
+mean_dt <- round(mean(comparison$df_elapsed), digits = 2)
+color_dt <- "#009900"
+read_dataset <- results[results$step=="read",]
+```
+
+## Executive Summary
+
+After testing the new Feather package and noticing how fast it is, I wanted to learn how Feather compares with other libraries and if its comparative performance degrades on larger data sets. 
+
+Here are the highlights of the results:
+
+- On average, **Feather read the files 235 times faster than 'read.csv'**, and **33 times faster then 'fread'**
+- 'read.csv' reads **1 gigabyte of CSV data in 80 seconds, 'fread' in 12 seconds and Feather in less than half a second**.
+- 'write.csv' took **90 seconds to write 1 gigabyte of CSV data**, the same data frame took **0.67 seconds using Feather**
+- Feather kept its performance even on the largest files tested
+- Feather's files size were consistently half of the size of the csv files
+- When loaded in memory, 'read.csv' and Feather where the same size. 'fead' was consistently larger by 30%.
+
+### Test Details
+
+I tested 32 csv files. Each file contain 80 variables. The smallest file is 50 megabytes and the largest is a bit under 2 gigabytes. Each file is 50 megabytes larger than the previous one.  
+
+The measurements taken are:
+
+1. Time it takes to read the file into memory
+2. Time it takes to write the data into a file
+3. Size of the file
+4. Memory usage when file is loaded 
+
+The R Markup with the test details is found in my GitHub account.  
+
+## Results
+
+### 1 - Time it takes to read the file into memory
+
+The following plot traces the time it takes 'read.csv' and 'fread' to read CSV files, and how long it takes to load the 'read_feather' to load the Feather file that has the same data in the original CSV files.
+
+```{r, fig.width=8, fig.height=4, fig.align="center", echo=FALSE}
+fig <- ggplot(data=read_dataset, aes(x=original_filesize,y=elapsed,group=tech,color=factor(tech))) 
+  fig <- fig + geom_line(size=2,alpha=0.4)
+  fig <- fig + scale_x_continuous(breaks=gb_breaks,labels=gb_labels) + fun_scale
+  fig <- fig + labs(title="Step - Reading File",x=gb_axis,y="Time to Complete (Seconds)")
+print(fig)
+```
+
+To calculate the Performance Increase, I divided the time it took 'read.csv' and 'fread' to read the CSV file, by the time it took 'read_feather' to load the Feather file that has the same data in the original CSV files.
+
+```{r, fig.width=7, fig.height=5, fig.align="center", echo=FALSE}
+
+fig <- ggplot(data=comparison, aes(x=csv_original_filesize))
+  fig <- fig + geom_line(aes(y=cf_elapsed,group=csv_step),size=2,alpha=0.4,color="red") 
+  fig <- fig + geom_line(aes(y=df_elapsed,group=csv_step),size=2,alpha=0.4,color=color_dt)
+  fig <- fig + geom_segment(aes(x=0, xend=2147483648, y=mean_csv, yend=mean_csv ), color="red")
+  fig <- fig + geom_segment(aes(x=0, xend=2147483648, y=mean_dt, yend=mean_dt ), color=color_dt)
+  fig <- fig + geom_text(aes(x=1073741824,y=mean_csv-10, label=paste("Mean increase vs. CSV: ",mean_csv,"X",sep="")), size=3, color="red")
+  fig <- fig + geom_text(aes(x=1073741824,y=mean_dt-10, label=paste("Mean increase vs. fread: ",mean_dt,"X",sep="")), size=3, color=color_dt)
+  fig <- fig + scale_x_continuous(breaks=gb_breaks,labels=gb_labels)
+  fig <- fig + scale_y_continuous(breaks=x_breaks,labels=paste(x_breaks,"X",sep=""))
+  fig <- fig + labs(title="Step - Reading File",x=gb_axis,y="Performance Increase")
+print(fig)
+```
+
+### 2 - Time it takes to write the data into a file
+
+Here is a comparison of the time it takes 'read.csv' and 'write_feather' to create the files based on the same data frame.
+
+```{r, fig.width=8, fig.height=4, fig.align="center", echo=FALSE}
+fig <- ggplot(data=results[results$step=="write",]) 
+  fig <- fig + geom_line(aes(x=original_filesize,y=elapsed,group=tech,color=factor(tech)),size=2,alpha=0.4)
+  fig <- fig + scale_x_continuous(breaks=gb_breaks, labels=gb_labels)
+  fig <- fig + scale_color_discrete(name="Function", breaks=c("csv","dt","feather"), labels=c("write.csv","", "write_feather" ))
+  fig <- fig + labs(title="Step - Writing File", x=gb_axis, y="Time to Complete (Seconds)")
+print(fig)
+```
+
+### 3 - Size of the file
+
+A comparison of the file size that 'read.csv' and 'write_feather' of the files created based on the same data frame.  The 'Function' says 'read.csv' and 'read_feather' because the measurement was taken at the time of running those commands.
+
+```{r, fig.width=8, fig.height=4, fig.align="center", echo=FALSE}
+fig <- ggplot(data=results[results$step=="read" & results$tech!="dt",]) 
+  fig <- fig + geom_line(aes(x=original_filesize,y=filesize,group=tech,color=factor(tech)),size=2,alpha=0.4)
+  fig <- fig + scale_x_continuous(breaks=gb_breaks,labels=gb_labels) + fun_scale
+  fig <- fig + scale_y_continuous(breaks=gb_breaks,labels=gb_labels)
+  fig <- fig + labs(title="Step - Reading File - File Size", x=gb_axis, y="New File Size (Gb)")
+print(fig)
+```
+
+### 4 - Memory usage when file is loaded
+
+Here is a comparison of the size of the data loaded via each of the commands.  
+
+```{r, fig.width=8, fig.height=4, fig.align="center", echo=FALSE}
+fig <- ggplot(data=read_dataset, aes(x=original_filesize, y=memsize, group=tech, color=factor(tech))) 
+  fig <- fig + geom_line(size=2,alpha=0.3)
+  fig <- fig + scale_x_continuous(breaks=gb_breaks, labels=gb_labels) + fun_scale
+  fig <- fig + scale_y_continuous(breaks=gb_breaks, labels=gb_labels) 
+  fig <- fig + labs(title="Step - Reading File - Memory (RAM)", x=gb_axis, y="New File Size (Gb)")
+print(fig)
+
+```
+
+

@@ -1,0 +1,122 @@
+---
+title: "Feather Performance Analysis"
+author: "Edgar Ruiz"
+date: "June, 3 2016"
+output: html_document
+---
+
+### Introduction
+
+The set is made up of 32 CSV files. Each file contain 80 variables. The smallest file is 50 megabytes and the largest is a bit under 2 gigabytes. Each file is 50 megabytes larger than the previous one, or around 86,000 rows. Details of the files sizes are available on Appendix A
+
+The steps for each experiment are:
+
+1. Read CSV file using 'read.csv'
+2. Read CSV file using 'fread'
+3. Write CSV file using 'write.csv'
+4. Write Feather file
+5. Read the Feather file
+
+Each experiment takes longer than the previous one, so the entire set of 32 files takes 2 hours to run on my laptop, which is how long this 'R Markdown' report took to complete.
+
+The code will also save the results into two feather files which are used to write up the analysis.
+
+#### Tidy Dataset
+
+```{r, eval=FALSE}
+library(feather)
+library(data.table)
+library(stringr)
+library(ggplot2)
+
+csv_files <- list.files(path="csvfiles/")
+entry_dataset <- NULL
+for(j in 1:length(csv_files)){
+  current_file <- csv_files[j]
+  csv_file  <- paste("csvfiles/",current_file, sep="")
+  csv_new <- "new.csv"
+  feather_file <- str_replace_all(csv_file, "csv","feather")
+  #-------------------- Reading CSV file using read.csv & recording results to data frame ----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="csv",step="read",elapsed=system.time(original_csv <- read.csv(csv_file))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(csv_file)$size, memsize=object.size(original_csv)[1]))
+  #-------------------- Write CSV file & recording results to data frame ---------------------------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="csv",step="write",elapsed=system.time(write.csv(original_csv,csv_new))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(csv_new)$size, memsize=0))
+  #-------------------- Reading CSV file using 'fread' & recording results to data frame -----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="feather",step="write",elapsed=system.time(write_feather(original_csv, feather_file))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(feather_file)$size, memsize=0))
+  rm(original_csv)
+   #-------------- Writting data frame using Feather& recording results to data frame --------------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="feather",step="read",elapsed=system.time(new_feather<- read_feather(feather_file))[3] ,rows=nrow(new_feather), columns=ncol(new_feather), filesize=file.info(feather_file)$size, memsize=object.size(new_feather)[1]))
+  rm(new_feather)
+  #-------------------- Reading Feather file & recording results to data frame -----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="dt",step="read",elapsed=system.time(dt_csv <- fread(csv_file))[3] ,rows=nrow(dt_csv), columns=ncol(dt_csv), filesize=0, memsize=object.size(dt_csv)[1]))
+  rm(dt_csv)
+}
+csv_files <- entry_dataset[entry_dataset$tech=="csv" & entry_dataset$step=="read",c("rows","filesize")]
+colnames(csv_files) <- c("rows","original_filesize")
+#----------------- Adding the original CSV file size to ease comparison -------------------------
+entry_dataset <- merge(x=entry_dataset, y=csv_files,  by="rows")
+write_feather(entry_dataset, "results.feather")
+print(structure(entry_dataset))
+```
+
+```{r, include=FALSE}
+#-----------  The same code repeats to supress fread messages  -----------------------
+library(feather)
+library(data.table)
+library(stringr)
+library(ggplot2)
+
+csv_files <- list.files(path="csvfiles/")
+entry_dataset <- NULL
+for(j in 1:length(csv_files)){
+  current_file <- csv_files[j]
+  csv_file  <- paste("csvfiles/",current_file, sep="")
+  csv_new <- "new.csv"
+  feather_file <- str_replace_all(csv_file, "csv","feather")
+  #-------------------- Reading CSV file using read.csv & recording results to data frame ----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="csv",step="read",elapsed=system.time(original_csv <- read.csv(csv_file))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(csv_file)$size, memsize=object.size(original_csv)[1]))
+  #-------------------- Write CSV file & recording results to data frame ---------------------------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="csv",step="write",elapsed=system.time(write.csv(original_csv,csv_new))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(csv_new)$size, memsize=0))
+  #-------------------- Reading CSV file using 'fread' & recording results to data frame -----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="feather",step="write",elapsed=system.time(write_feather(original_csv, feather_file))[3] ,rows=nrow(original_csv), columns=ncol(original_csv), filesize=file.info(feather_file)$size, memsize=0))
+  rm(original_csv)
+   #-------------- Writting data frame using Feather& recording results to data frame --------------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="feather",step="read",elapsed=system.time(new_feather<- read_feather(feather_file))[3] ,rows=nrow(new_feather), columns=ncol(new_feather), filesize=file.info(feather_file)$size, memsize=object.size(new_feather)[1]))
+  rm(new_feather)
+  #-------------------- Reading Feather file & recording results to data frame -----------------
+  entry_dataset <- rbind(entry_dataset,data.frame(testfile=csv_file, tech="dt",step="read",elapsed=system.time(dt_csv <- fread(csv_file))[3] ,rows=nrow(dt_csv), columns=ncol(dt_csv), filesize=0, memsize=object.size(dt_csv)[1]))
+  rm(dt_csv)
+}
+csv_files <- entry_dataset[entry_dataset$tech=="csv" & entry_dataset$step=="read",c("rows","filesize")]
+colnames(csv_files) <- c("rows","original_filesize")
+#----------------- Adding the original CSV file size to ease comparison -------------------------
+entry_dataset <- merge(x=entry_dataset, y=csv_files,  by="rows")
+write_feather(entry_dataset, "results.feather")
+print(head(entry_dataset))
+```
+
+
+### Comparison Dataset
+
+```{r}
+csv <- entry_dataset[entry_dataset$tech=="csv" & entry_dataset$step=="read",]
+colnames(csv) <- paste("csv_", names(csv), sep="")
+dt <- entry_dataset[entry_dataset$tech=="dt" & entry_dataset$step=="read",]
+colnames(dt) <- paste("dt_", names(dt), sep="")
+feather <- entry_dataset[entry_dataset$tech=="feather" & entry_dataset$step=="read",]
+colnames(feather) <- paste("feather_", names(feather), sep="")
+step_read <- merge(x=csv, y=dt, by.x="csv_rows", by.y="dt_rows")
+step_read <- merge(x=step_read, y=feather, by.x="csv_rows", by.y = "feather_rows")
+step_read$cf_elapsed <- step_read$csv_elapsed / step_read$feather_elapsed
+step_read$df_elapsed <- step_read$dt_elapsed / step_read$feather_elapsed
+write_feather(step_read, "comparison.feather")
+print(head(step_read))
+```
+
+## Appendix
+
+### Appendix A
+```{r}
+csv_files <- file.info(paste("csvfiles/",list.files(path="csvfiles/"),sep=""))
+print(data.frame(FileName = rownames(csv_files), FileSize_Bytes = prettyNum(csv_files$size, big.mark = ",")))
+```
+
